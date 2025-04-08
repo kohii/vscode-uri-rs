@@ -1,0 +1,14 @@
+[package]
+name = "vscode-uri-rs"
+version = "0.1.0"
+edition = "2021"
+description = "Rust implementation of vscode-uri"
+authors = ["Kohei Ishikawa <koheiweb.net@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/kohii/vscode-uri-rs"
+readme = "README.md"
+keywords = ["uri", "url", "vscode"]
+
+[dependencies]
+percent-encoding = "2.3.1"
+url = "2.5.4"
