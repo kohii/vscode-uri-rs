@@ -6,7 +6,6 @@
 use percent_encoding::{percent_decode_str, percent_encode, AsciiSet, CONTROLS};
 use std::fmt;
 use std::path::{Path, PathBuf};
-use url::Url;
 use crate::platform::is_windows;
 
 const URI_ENCODING_SET: &AsciiSet = &CONTROLS
@@ -100,7 +99,7 @@ impl URI {
             if !self.authority.is_empty() && !self.path.starts_with('/') {
                 panic!("URI Error: If a URI contains an authority component, then the path component must either be empty or begin with a slash (\"/\") character");
             }
-            if self.authority.is_empty() && self.path.starts_with("//") {
+            if self.authority.is_empty() && self.path.starts_with("//") && self.scheme != "file" {
                 panic!("URI Error: If a URI does not contain an authority component, then the path cannot begin with two slash characters (\"//\")");
             }
         }
@@ -111,109 +110,116 @@ impl URI {
             return URI::new("", "", "", "", "");
         }
 
-        match Url::parse(value) {
-            Ok(url) => {
-                let scheme = url.scheme().to_string();
-                let authority = url.host_str().unwrap_or("").to_string();
-                let authority = if let Some(port) = url.port() {
-                    format!("{}:{}", authority, port)
-                } else {
-                    authority
-                };
-                let username = url.username();
-                let authority = if !username.is_empty() {
-                    if let Some(password) = url.password() {
-                        if !password.is_empty() {
-                            format!("{}:{}@{}", username, password, authority)
-                        } else {
-                            format!("{}@{}", username, authority)
-                        }
-                    } else {
-                        format!("{}@{}", username, authority)
-                    }
-                } else {
-                    authority
-                };
-                
-                let mut path = url.path().to_string();
-                path = percent_decode_str(&path).decode_utf8_lossy().to_string();
-                
-                let query = url.query().unwrap_or("").to_string();
-                let fragment = url.fragment().unwrap_or("").to_string();
-                
-                URI::new(scheme, authority, path, query, fragment)
+        if value.starts_with("file:") {
+            let mut fragment = String::new();
+            let mut value_without_fragment = value.to_string();
+            
+            if let Some(frag_idx) = value.find('#') {
+                value_without_fragment = value[..frag_idx].to_string();
+                fragment = value[frag_idx + 1..].to_string();
             }
-            Err(_) => {
-                if value.starts_with("file:") {
-                    let path = value.trim_start_matches("file://").trim_start_matches("file:");
-                    let decoded_path = percent_decode_str(path).decode_utf8_lossy().to_string();
-                    URI::file(decoded_path)
-                } else {
-                    let mut scheme = String::new();
-                    let mut authority = String::new();
-                    let mut path = String::new();
-                    let mut query = String::new();
-                    let mut fragment = String::new();
-
-                    if let Some(scheme_end) = value.find(':') {
-                        scheme = value[..scheme_end].to_string();
-                        let rest = &value[scheme_end + 1..];
-
-                        if rest.starts_with("//") {
-                            let auth_path = &rest[2..];
-                            if let Some(auth_end) = auth_path.find('/') {
-                                authority = auth_path[..auth_end].to_string();
-                                let path_query_frag = &auth_path[auth_end..];
-
-                                if let Some(query_start) = path_query_frag.find('?') {
-                                    path = path_query_frag[..query_start].to_string();
-                                    let query_frag = &path_query_frag[query_start + 1..];
-
-                                    if let Some(frag_start) = query_frag.find('#') {
-                                        query = query_frag[..frag_start].to_string();
-                                        fragment = query_frag[frag_start + 1..].to_string();
-                                    } else {
-                                        query = query_frag.to_string();
-                                    }
-                                } else if let Some(frag_start) = path_query_frag.find('#') {
-                                    path = path_query_frag[..frag_start].to_string();
-                                    fragment = path_query_frag[frag_start + 1..].to_string();
-                                } else {
-                                    path = path_query_frag.to_string();
-                                }
-                            } else {
-                                authority = auth_path.to_string();
-                            }
-                        } else {
-                            let path_query_frag = rest;
-                            if let Some(query_start) = path_query_frag.find('?') {
-                                path = path_query_frag[..query_start].to_string();
-                                let query_frag = &path_query_frag[query_start + 1..];
-
-                                if let Some(frag_start) = query_frag.find('#') {
-                                    query = query_frag[..frag_start].to_string();
-                                    fragment = query_frag[frag_start + 1..].to_string();
-                                } else {
-                                    query = query_frag.to_string();
-                                }
-                            } else if let Some(frag_start) = path_query_frag.find('#') {
-                                path = path_query_frag[..frag_start].to_string();
-                                fragment = path_query_frag[frag_start + 1..].to_string();
-                            } else {
-                                path = path_query_frag.to_string();
-                            }
-                        }
-                    } else {
-                        path = value.to_string();
-                    }
-
-                    path = percent_decode_str(&path).decode_utf8_lossy().to_string();
-                    query = percent_decode_str(&query).decode_utf8_lossy().to_string();
-                    fragment = percent_decode_str(&fragment).decode_utf8_lossy().to_string();
-
-                    URI::new(scheme, authority, path, query, fragment)
+            
+            let decoded_fragment = percent_decode_str(&fragment).decode_utf8_lossy().to_string();
+            
+            if value_without_fragment.starts_with("file:////") {
+                let without_scheme = &value_without_fragment[7..]; // Skip "file:///"
+                let segments: Vec<&str> = without_scheme.splitn(3, '/').collect();
+                if segments.len() >= 2 {
+                    let path = format!("/{}", segments[1..].join("/"));
+                    let decoded_path = percent_decode_str(&path).decode_utf8_lossy().to_string();
+                    return URI::new("file", segments[0], decoded_path, "", decoded_fragment);
                 }
             }
+            else if value_without_fragment.starts_with("file://") && !value_without_fragment.starts_with("file:///") {
+                let without_scheme = &value_without_fragment[7..]; // Skip "file://"
+                let auth_end = without_scheme.find('/').unwrap_or(without_scheme.len());
+                let authority = &without_scheme[..auth_end];
+                let path = if auth_end < without_scheme.len() {
+                    &without_scheme[auth_end..]
+                } else {
+                    "/"
+                };
+                
+                let decoded_path = percent_decode_str(path).decode_utf8_lossy().to_string();
+                return URI::new("file", authority, decoded_path, "", decoded_fragment);
+            }
+            
+            let path_with_fragment = value.trim_start_matches("file://").trim_start_matches("file:");
+            
+            let mut fragment = String::new();
+            let mut path = path_with_fragment.to_string();
+            
+            if let Some(frag_idx) = path_with_fragment.find('#') {
+                path = path_with_fragment[..frag_idx].to_string();
+                fragment = path_with_fragment[frag_idx + 1..].to_string();
+            }
+            
+            let decoded_path = percent_decode_str(&path).decode_utf8_lossy().to_string();
+            let decoded_fragment = percent_decode_str(&fragment).decode_utf8_lossy().to_string();
+            
+            let mut uri = URI::file(decoded_path);
+            if !fragment.is_empty() {
+                uri = uri.with(URIChange {
+                    fragment: Some(decoded_fragment),
+                    ..Default::default()
+                });
+            }
+            return uri;
+        }
+
+        let mut scheme = String::new();
+        let mut authority = String::new();
+        let mut path = String::new();
+        let mut query = String::new();
+        let mut fragment = String::new();
+
+        if let Some(scheme_end) = value.find(':') {
+            scheme = value[..scheme_end].to_string();
+            let rest = &value[scheme_end + 1..];
+
+            if rest.starts_with("//") {
+                let auth_path = &rest[2..];
+                
+                let auth_end = auth_path.find('/').unwrap_or(auth_path.len());
+                authority = auth_path[..auth_end].to_string();
+                
+                if auth_end < auth_path.len() {
+                    let path_query_frag = &auth_path[auth_end..];
+                    Self::parse_path_query_fragment(path_query_frag, &mut path, &mut query, &mut fragment);
+                } else {
+                    path = "/".to_string();
+                }
+            } else {
+                Self::parse_path_query_fragment(rest, &mut path, &mut query, &mut fragment);
+            }
+        } else {
+            path = value.to_string();
+        }
+
+        path = percent_decode_str(&path).decode_utf8_lossy().to_string();
+        fragment = percent_decode_str(&fragment).decode_utf8_lossy().to_string();
+
+        URI::new(scheme, authority, path, query, fragment)
+    }
+    
+    fn parse_path_query_fragment(input: &str, path: &mut String, query: &mut String, fragment: &mut String) {
+        if let Some(query_start) = input.find('?') {
+            *path = input[..query_start].to_string();
+            let query_frag = &input[query_start + 1..];
+
+            if let Some(frag_start) = query_frag.find('#') {
+                *query = query_frag[..frag_start].to_string();
+                *fragment = query_frag[frag_start + 1..].to_string();
+            } else {
+                *query = query_frag.to_string();
+            }
+        } 
+        else if let Some(frag_start) = input.find('#') {
+            *path = input[..frag_start].to_string();
+            *fragment = input[frag_start + 1..].to_string();
+        } 
+        else {
+            *path = input.to_string();
         }
     }
 
