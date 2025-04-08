@@ -108,19 +108,40 @@ impl URI {
         match Url::parse(value) {
             Ok(url) => {
                 let scheme = url.scheme().to_string();
-                let authority = url.authority().to_string();
+                let authority = url.host_str().unwrap_or("").to_string();
+                let authority = if let Some(port) = url.port() {
+                    format!("{}:{}", authority, port)
+                } else {
+                    authority
+                };
+                let username = url.username();
+                let authority = if !username.is_empty() {
+                    if let Some(password) = url.password() {
+                        if !password.is_empty() {
+                            format!("{}:{}@{}", username, password, authority)
+                        } else {
+                            format!("{}@{}", username, authority)
+                        }
+                    } else {
+                        format!("{}@{}", username, authority)
+                    }
+                } else {
+                    authority
+                };
+                
                 let mut path = url.path().to_string();
-                while path.contains("//") {
-                    path = path.replace("//", "/");
-                }
+                path = percent_decode_str(&path).decode_utf8_lossy().to_string();
+                
                 let query = url.query().unwrap_or("").to_string();
                 let fragment = url.fragment().unwrap_or("").to_string();
+                
                 URI::new(scheme, authority, path, query, fragment)
             }
             Err(_) => {
                 if value.starts_with("file:") {
                     let path = value.trim_start_matches("file://").trim_start_matches("file:");
-                    URI::file(path)
+                    let decoded_path = percent_decode_str(path).decode_utf8_lossy().to_string();
+                    URI::file(decoded_path)
                 } else {
                     let mut scheme = String::new();
                     let mut authority = String::new();
@@ -180,6 +201,10 @@ impl URI {
                         path = value.to_string();
                     }
 
+                    path = percent_decode_str(&path).decode_utf8_lossy().to_string();
+                    query = percent_decode_str(&query).decode_utf8_lossy().to_string();
+                    fragment = percent_decode_str(&fragment).decode_utf8_lossy().to_string();
+
                     URI::new(scheme, authority, path, query, fragment)
                 }
             }
@@ -207,6 +232,10 @@ impl URI {
                 }
             } else {
                 uri_path = path_str;
+                if uri_path.len() >= 2 && uri_path.chars().nth(1) == Some(':') {
+                    let drive = uri_path.chars().next().unwrap().to_lowercase().to_string();
+                    uri_path = format!("{}{}", drive, &uri_path[1..]);
+                }
                 if !uri_path.starts_with('/') {
                     uri_path = format!("/{}", uri_path);
                 }
@@ -281,11 +310,17 @@ impl URI {
             if !self.authority.is_empty() {
                 path = format!("\\\\{}\\{}", self.authority, path.trim_start_matches('/').replace('/', "\\"));
             } else {
+                if path.len() >= 3 && path.starts_with('/') && path.chars().nth(2) == Some(':') {
+                    path = path[1..].to_string();
+                }
+                
                 path = path.replace('/', "\\");
-                if path.starts_with('\\') {
+                if path.starts_with('\\') && !path.starts_with("\\\\") {
                     path = path[1..].to_string();
                 }
             }
+        } else if !self.authority.is_empty() {
+            path = format!("//{}{}", self.authority, path);
         }
 
         let decoded_path = percent_decode_str(&path).decode_utf8_lossy().to_string();
@@ -296,7 +331,7 @@ impl URI {
         let mut result = String::new();
 
         if !self.scheme.is_empty() {
-            result.push_str(&self.scheme);
+            result.push_str(&self.scheme.to_lowercase());
             result.push(':');
         }
 
@@ -318,16 +353,28 @@ impl URI {
         if skip_encoding {
             result.push_str(&self.path);
         } else {
-            for segment in self.path.split('/') {
-                if !segment.is_empty() {
-                    result.push('/');
-                    let encoded = percent_encode(segment.as_bytes(), URI_ENCODING_SET).to_string();
-                    result.push_str(&encoded);
-                } else if result.is_empty() || !result.ends_with('/') {
+            let path = if self.path.starts_with('/') {
+                &self.path[1..]
+            } else {
+                &self.path
+            };
+            
+            if self.path.starts_with('/') || self.path.is_empty() {
+                result.push('/');
+            }
+            
+            let segments: Vec<&str> = path.split('/').collect();
+            for (i, segment) in segments.iter().enumerate() {
+                if i > 0 {
                     result.push('/');
                 }
+                if !segment.is_empty() {
+                    let encoded = percent_encode(segment.as_bytes(), URI_ENCODING_SET).to_string();
+                    result.push_str(&encoded);
+                }
             }
-            if self.path.ends_with('/') && !result.ends_with('/') {
+            
+            if self.path.ends_with('/') && !result.ends_with('/') && !self.path.is_empty() {
                 result.push('/');
             }
         }
