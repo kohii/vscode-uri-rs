@@ -1,4 +1,4 @@
-use vscode_uri_rs::{URI, URIChange};
+use vscode_uri_rs::{URI, URIChange, Utils};
 
 fn is_windows() -> bool {
     cfg!(windows)
