@@ -2,117 +2,58 @@
 
 A Rust implementation of [microsoft/vscode-uri](https://github.com/microsoft/vscode-uri), providing URI parsing, manipulation, and utility functions for handling URIs and file paths.
 
-## Features
+This crate contains the URI implementation that is used by VS Code and its extensions, ported to Rust. It has support for parsing a string into `scheme`, `authority`, `path`, `query`, and `fragment` URI components as defined in [RFC 3986](http://tools.ietf.org/html/rfc3986).
 
-- URI parsing and manipulation following RFC 3986 standards
-- File URI handling with cross-platform support
-- Path manipulation utilities (join, resolve, dirname, basename, extname)
-- Proper encoding/decoding of URI components
-- Windows and Unix path handling
-
-## Installation
-
-Add this to your `Cargo.toml`:
-
-```toml
-[dependencies]
-vscode-uri-rs = "0.1.0"
+```text
+foo://example.com:8042/over/there?name=ferret#nose
+\_/   \______________/\_________/ \_________/ \__/
+ |           |            |            |        |
+scheme   authority       path        query   fragment
+ |    _____________________|__
+/ \ /                         \
+urn:example:animal:ferret:nose
 ```
 
 ## Usage
 
-### Basic URI Parsing
-
 ```rust
-use vscode_uri_rs::URI;
+use vscode_uri_rs::Uri;
 
-fn main() {
-    // Parse a URI
-    let uri = URI::parse("https://code.visualstudio.com/docs/extensions/overview#frag");
-    
-    // Access URI components
-    println!("Scheme: {}", uri.scheme());
-    println!("Authority: {}", uri.authority());
-    println!("Path: {}", uri.path());
-    println!("Query: {}", uri.query());
-    println!("Fragment: {}", uri.fragment());
-    
-    // Convert back to string
-    println!("URI: {}", uri.to_string(false));
-}
+// Parse a URI from string
+let uri = Uri::parse("https://code.visualstudio.com/docs/extensions/overview#frag").unwrap();
+assert_eq!(uri.scheme(), "https");
+assert_eq!(uri.authority(), "code.visualstudio.com");
+assert_eq!(uri.path(), "/docs/extensions/overview");
+assert_eq!(uri.query(), "");
+assert_eq!(uri.fragment(), "frag");
+assert_eq!(uri.to_string(), "https://code.visualstudio.com/docs/extensions/overview#frag");
+
+// Create a URI from a fs path
+let uri = Uri::from_file("/users/me/rust-projects/");
+assert_eq!(uri.scheme(), "file");
+assert_eq!(uri.authority(), "");
+assert_eq!(uri.path(), "/users/me/rust-projects/");
+assert_eq!(uri.query(), "");
+assert_eq!(uri.fragment(), "");
+assert_eq!(uri.to_string(), "file:///users/me/rust-projects/");
 ```
 
-### File URIs
+## Utils
 
-```rust
-use vscode_uri_rs::URI;
-use std::path::Path;
+This crate also provides utility functions for path manipulation, similar to the original JavaScript implementation:
 
-fn main() {
-    // Create a file URI from a path
-    let uri = URI::file("/users/me/projects/");
-    
-    // Convert URI back to filesystem path
-    let path = uri.fs_path();
-    
-    println!("URI: {}", uri);
-    println!("Path: {}", path.display());
-}
-```
+* `join_path(uri, paths): Uri` - Join a URI with path segments
+* `resolve_path(uri, paths): Uri` - Resolve a URI with path segments
+* `dirname(uri): String` - Get the directory name of a URI's path
+* `basename(uri): String` - Get the base name of a URI's path
+* `extname(uri): String` - Get the extension of a URI's path
 
-### URI Manipulation
-
-```rust
-use vscode_uri_rs::{URI, URIChange};
-
-fn main() {
-    let uri = URI::parse("https://example.com/path");
-    
-    // Create a new URI by changing components
-    let new_uri = uri.with(URIChange {
-        scheme: Some("http".to_string()),
-        path: Some("/newpath".to_string()),
-        ..Default::default()
-    });
-    
-    println!("New URI: {}", new_uri);
-}
-```
-
-### Path Utilities
-
-```rust
-use vscode_uri_rs::{URI, utils};
-
-fn main() {
-    let uri = URI::parse("https://example.com/path/to/file.txt");
-    
-    // Join paths
-    let joined = utils::join_path(&uri, &["subdir", "file.js"]);
-    println!("Joined: {}", joined);
-    
-    // Resolve paths (handles .. and .)
-    let resolved = utils::resolve_path(&uri, &["../other", "./file.js"]);
-    println!("Resolved: {}", resolved);
-    
-    // Get directory name
-    let dir = utils::dirname(&uri);
-    println!("Directory: {}", dir);
-    
-    // Get basename
-    let base = utils::basename(&uri);
-    println!("Basename: {}", base);
-    
-    // Get extension
-    let ext = utils::extname(&uri);
-    println!("Extension: {}", ext);
-}
-```
+All utility functions use POSIX path manipulation rules.
 
 ## License
 
 MIT
 
-## Credits
+## Acknowledgments
 
-This is a Rust port of the [microsoft/vscode-uri](https://github.com/microsoft/vscode-uri) TypeScript library.
+This is a Rust port of the [microsoft/vscode-uri](https://github.com/microsoft/vscode-uri) project. Thanks to the original authors and contributors.
