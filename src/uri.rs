@@ -22,7 +22,9 @@ lazy_static! {
 
 const EMPTY: &str = "";
 const SLASH: &str = "/";
-const PATH_SEP_MARKER: Option<u8> = if is_windows() { Some(1) } else { None };
+lazy_static! {
+    static ref PATH_SEP_MARKER: Option<u8> = if is_windows() { Some(1) } else { None };
+}
 
 lazy_static! {
     static ref ENCODE_TABLE: HashMap<u32, &'static str> = {
@@ -202,9 +204,9 @@ fn uri_to_fs_path(uri: &URI, keep_drive_letter_casing: bool) -> String {
 
 fn as_formatted(uri: &URI, skip_encoding: bool) -> String {
     let encoder = if !skip_encoding {
-        encode_uri_component_fast
+        |s: &str, is_path: bool, is_authority: bool| encode_uri_component_fast(s, is_path, is_authority)
     } else {
-        encode_uri_component_minimal
+        |s: &str, _is_path: bool, _is_authority: bool| encode_uri_component_minimal(s)
     };
     
     let mut res = String::new();
@@ -375,10 +377,10 @@ impl URI {
 
         if let Some(captures) = URI_REGEX.captures(value) {
             let scheme = captures.get(2).map_or(EMPTY, |m| m.as_str());
-            let authority = captures.get(4).map_or(EMPTY, |m| percent_decode(m.as_str()));
-            let path = captures.get(5).map_or(EMPTY, |m| percent_decode(m.as_str()));
-            let query = captures.get(7).map_or(EMPTY, |m| percent_decode(m.as_str()));
-            let fragment = captures.get(9).map_or(EMPTY, |m| percent_decode(m.as_str()));
+            let authority = captures.get(4).map_or(EMPTY.to_string(), |m| percent_decode(m.as_str()));
+            let path = captures.get(5).map_or(EMPTY.to_string(), |m| percent_decode(m.as_str()));
+            let query = captures.get(7).map_or(EMPTY.to_string(), |m| percent_decode(m.as_str()));
+            let fragment = captures.get(9).map_or(EMPTY.to_string(), |m| percent_decode(m.as_str()));
             
             return URI::new(
                 scheme,
