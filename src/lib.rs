@@ -3,10 +3,10 @@
  * https://github.com/microsoft/vscode-uri
  */
 
-mod uri;
-mod utils;
 mod char_code;
 mod platform;
+mod uri;
+mod utils;
 
-pub use uri::{URI, URIChange, URIComponents};
+pub use uri::{URIChange, URIComponents, URI};
 pub use utils::Utils;

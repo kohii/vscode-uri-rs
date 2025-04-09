@@ -25,7 +25,7 @@ pub enum CharCode {
     Dash = 45,
     Period = 46,
     Slash = 47,
-    
+
     Digit0 = 48,
     Digit1 = 49,
     Digit2 = 50,
@@ -36,7 +36,7 @@ pub enum CharCode {
     Digit7 = 55,
     Digit8 = 56,
     Digit9 = 57,
-    
+
     Colon = 58,
     Semicolon = 59,
     LessThan = 60,
@@ -44,7 +44,7 @@ pub enum CharCode {
     GreaterThan = 62,
     QuestionMark = 63,
     AtSign = 64,
-    
+
     A = 65,
     B = 66,
     C = 67,
@@ -71,14 +71,14 @@ pub enum CharCode {
     X = 88,
     Y = 89,
     Z = 90,
-    
+
     OpenSquareBracket = 91,
     Backslash = 92,
     CloseSquareBracket = 93,
     Caret = 94,
     Underline = 95,
     BackTick = 96,
-    
+
     a = 97,
     b = 98,
     c = 99,
@@ -105,7 +105,7 @@ pub enum CharCode {
     x = 120,
     y = 121,
     z = 122,
-    
+
     OpenCurlyBrace = 123,
     VerticalBar = 124,
     CloseCurlyBrace = 125,
