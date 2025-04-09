@@ -103,6 +103,30 @@ fn encode_uri_component_fast(uri_component: &str, is_path: bool, is_authority: b
     for (pos, c) in uri_component.char_indices() {
         let code = c as u32;
 
+        if code == CharCode::Backslash as u32 && is_path && !is_windows() {
+            if res.is_none() {
+                res = Some(uri_component[0..pos].to_string());
+            }
+            if native_encode_pos != -1 {
+                let encoded = percent_encode(uri_component[native_encode_pos as usize..pos].as_bytes(), CONTROLS).to_string();
+                res = Some(res.unwrap_or_else(|| uri_component[0..native_encode_pos as usize].to_string()) + &encoded);
+                native_encode_pos = -1;
+            }
+            res.as_mut().unwrap().push_str("%5C");
+            continue;
+        } else if code == CharCode::Colon as u32 && is_path && !is_authority {
+            if res.is_none() {
+                res = Some(uri_component[0..pos].to_string());
+            }
+            if native_encode_pos != -1 {
+                let encoded = percent_encode(uri_component[native_encode_pos as usize..pos].as_bytes(), CONTROLS).to_string();
+                res = Some(res.unwrap_or_else(|| uri_component[0..native_encode_pos as usize].to_string()) + &encoded);
+                native_encode_pos = -1;
+            }
+            res.as_mut().unwrap().push_str("%3A");
+            continue;
+        }
+
         if (code >= CharCode::a as u32 && code <= CharCode::z as u32)
             || (code >= CharCode::A as u32 && code <= CharCode::Z as u32)
             || (code >= CharCode::Digit0 as u32 && code <= CharCode::Digit9 as u32)
@@ -187,12 +211,31 @@ fn uri_to_fs_path(uri: &URI, keep_drive_letter_casing: bool) -> String {
         
         if !keep_drive_letter_casing {
             let drive_letter = uri.path.chars().nth(1).unwrap().to_lowercase().next().unwrap();
-            value = format!("{}{}", drive_letter, &uri.path[2..]);
+            value = format!("{}:{}", drive_letter, &uri.path[3..]);
         } else {
-            value = uri.path[1..].to_string();
+            let drive_letter = uri.path.chars().nth(1).unwrap();
+            value = format!("{}:{}", drive_letter, &uri.path[3..]);
+        }
+    } else if uri.path.len() >= 2 
+        && ((uri.path.chars().next().unwrap() as u32 >= CharCode::A as u32 
+            && uri.path.chars().next().unwrap() as u32 <= CharCode::Z as u32) 
+            || (uri.path.chars().next().unwrap() as u32 >= CharCode::a as u32 
+            && uri.path.chars().next().unwrap() as u32 <= CharCode::z as u32))
+        && uri.path.chars().nth(1) == Some('/') {
+        
+        if !keep_drive_letter_casing {
+            let drive_letter = uri.path.chars().next().unwrap().to_lowercase().next().unwrap();
+            value = format!("{}:{}", drive_letter, &uri.path[1..]);
+        } else {
+            let drive_letter = uri.path.chars().next().unwrap();
+            value = format!("{}:{}", drive_letter, &uri.path[1..]);
         }
     } else {
         value = uri.path.clone();
+    }
+    
+    if value.contains('%') {
+        value = percent_decode(&value);
     }
     
     if is_windows() {
@@ -272,13 +315,13 @@ fn as_formatted(uri: &URI, skip_encoding: bool) -> String {
             let code = path.chars().nth(1).unwrap() as u32;
             if code >= CharCode::A as u32 && code <= CharCode::Z as u32 {
                 let drive_letter = ((code + 32) as u8) as char;
-                path_to_use = format!("/{}{}", drive_letter, &path[3..]);
+                path_to_use = format!("/{}:{}", drive_letter, &path[3..]);
             }
         } else if path.len() >= 2 && path.chars().nth(1) == Some(':') {
             let code = path.chars().next().unwrap() as u32;
             if code >= CharCode::A as u32 && code <= CharCode::Z as u32 {
                 let drive_letter = ((code + 32) as u8) as char;
-                path_to_use = format!("{}{}", drive_letter, &path[2..]);
+                path_to_use = format!("{}:{}", drive_letter, &path[2..]);
             }
         }
         
@@ -417,6 +460,12 @@ impl URI {
                     SLASH.to_string()
                 };
             }
+        }
+        
+        if path_str.len() >= 2 && path_str.chars().nth(1) == Some(':') {
+            let drive_letter = path_str.chars().next().unwrap().to_lowercase().next().unwrap();
+            let rest = &path_str[2..];
+            path_str = format!("/{}:{}", drive_letter, rest);
         }
 
         URI::new("file", authority, path_str, EMPTY, EMPTY)
