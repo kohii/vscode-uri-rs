@@ -17,10 +17,10 @@ urn:example:animal:ferret:nose
 ## Usage
 
 ```rust
-use vscode_uri_rs::Uri;
+use vscode_uri_rs::URI;
 
 // Parse a URI from string
-let uri = Uri::parse("https://code.visualstudio.com/docs/extensions/overview#frag").unwrap();
+let uri = URI::parse("https://code.visualstudio.com/docs/extensions/overview#frag").unwrap();
 assert_eq!(uri.scheme(), "https");
 assert_eq!(uri.authority(), "code.visualstudio.com");
 assert_eq!(uri.path(), "/docs/extensions/overview");
@@ -29,7 +29,7 @@ assert_eq!(uri.fragment(), "frag");
 assert_eq!(uri.to_string(), "https://code.visualstudio.com/docs/extensions/overview#frag");
 
 // Create a URI from a fs path
-let uri = Uri::from_file("/users/me/rust-projects/");
+let uri = URI::from_file("/users/me/rust-projects/");
 assert_eq!(uri.scheme(), "file");
 assert_eq!(uri.authority(), "");
 assert_eq!(uri.path(), "/users/me/rust-projects/");
@@ -42,8 +42,8 @@ assert_eq!(uri.to_string(), "file:///users/me/rust-projects/");
 
 This crate also provides utility functions for path manipulation, similar to the original JavaScript implementation:
 
-* `join_path(uri, paths): Uri` - Join a URI with path segments
-* `resolve_path(uri, paths): Uri` - Resolve a URI with path segments
+* `join_path(uri, paths): URI` - Join a URI with path segments
+* `resolve_path(uri, paths): URI` - Resolve a URI with path segments
 * `dirname(uri): String` - Get the directory name of a URI's path
 * `basename(uri): String` - Get the base name of a URI's path
 * `extname(uri): String` - Get the extension of a URI's path
