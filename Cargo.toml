@@ -9,6 +9,9 @@ repository = "https://github.com/kohii/vscode-uri-rs"
 readme = "README.md"
 keywords = ["uri", "url", "vscode"]
 
+[features]
+test-utils = []
+
 [dependencies]
 percent-encoding = "2.3.1"
 regex = "1.10.2"

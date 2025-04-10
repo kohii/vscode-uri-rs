@@ -4,9 +4,10 @@
  */
 
 mod char_code;
-mod platform;
+pub mod platform;
 mod uri;
 mod utils;
 
-pub use uri::{URIChange, URIComponents, URI};
+pub use platform::is_windows;
+pub use uri::{URIChange, URIComponents, UriError, URI};
 pub use utils::Utils;

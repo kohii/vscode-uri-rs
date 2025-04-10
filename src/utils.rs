@@ -3,7 +3,7 @@
  * https://github.com/microsoft/vscode-uri
  */
 
-use crate::uri::URI;
+use crate::uri::{UriError, URI};
 
 pub struct Utils;
 
@@ -21,8 +21,9 @@ impl Utils {
      * @param paths The paths to be joined with the path of URI.
      * @returns A URI with the joined path. All other properties of the URI (scheme, authority, query, fragments, ...) will be taken from the input URI.
      */
-    pub fn join_path(uri: &URI, paths: &[&str]) -> URI {
+    pub fn join_path(uri: &URI, paths: &[&str]) -> Result<URI, UriError> {
         let mut result = uri.path().to_string();
+        let mut had_trailing_slash = result.ends_with('/');
 
         for path in paths {
             if result.ends_with('/') {
@@ -31,12 +32,16 @@ impl Utils {
                 result.push('/');
                 result.push_str(path);
             }
+            had_trailing_slash = path.ends_with('/');
         }
 
-        result = Self::normalize_path(&result);
+        let mut normalized = Self::normalize_path(&result);
+        if had_trailing_slash && !normalized.ends_with('/') {
+            normalized.push('/');
+        }
 
         uri.with(crate::uri::URIChange {
-            path: Some(result),
+            path: Some(normalized),
             ..Default::default()
         })
     }
@@ -54,10 +59,12 @@ impl Utils {
      * @param paths The paths to resolve against the path of URI.
      * @returns A URI with the resolved path. All other properties of the URI (scheme, authority, query, fragments, ...) will be taken from the input URI.
      */
-    pub fn resolve_path(uri: &URI, paths: &[&str]) -> URI {
+    pub fn resolve_path(uri: &URI, paths: &[&str]) -> Result<URI, UriError> {
         let mut base = uri.path().to_string();
+        let mut slash_added = false;
         if !base.starts_with('/') {
-            base = format!("/{}", base);
+            base = format!("/{}", base); // make the path abstract
+            slash_added = true;
         }
 
         let mut result = base;
@@ -87,12 +94,29 @@ impl Utils {
             }
         }
 
-        if !uri.path().starts_with('/') && uri.authority().is_empty() && result.starts_with('/') {
-            result = result[1..].to_string();
-        }
+        let normalized = Self::normalize_path(&result);
+
+        // Remove leading slash if it was added and there's no authority
+        let final_path = if slash_added && uri.authority().is_empty() && normalized.starts_with('/')
+        {
+            if normalized == "/" {
+                String::new()
+            } else {
+                normalized[1..].to_string()
+            }
+        } else {
+            normalized
+        };
+
+        // Always remove trailing slash except for root
+        let final_path = if final_path.len() > 1 && final_path.ends_with('/') {
+            final_path[..final_path.len() - 1].to_string()
+        } else {
+            final_path
+        };
 
         uri.with(crate::uri::URIChange {
-            path: Some(result),
+            path: Some(final_path),
             ..Default::default()
         })
     }
@@ -105,34 +129,26 @@ impl Utils {
      * @param uri The input URI.
      * @return The last segment of the URIs path.
      */
-    pub fn dirname(uri: &URI) -> URI {
-        if uri.path().is_empty() || uri.path() == "/" {
-            return uri.clone();
-        }
-
+    pub fn dirname(uri: &URI) -> Result<URI, UriError> {
         let path = uri.path();
-        let mut result = path.to_string();
-
-        if result.ends_with('/') && result != "/" {
-            result.pop();
+        if path.is_empty() || path == "/" {
+            return Ok(uri.clone());
         }
 
-        if let Some(last_slash) = result.rfind('/') {
-            if last_slash == 0 {
-                result = "/".to_string();
-            } else {
-                result = result[..last_slash].to_string();
-            }
-        } else {
-            result = ".".to_string();
+        let mut path = path.to_string();
+        // Remove trailing slashes except for root
+        while path.len() > 1 && path.ends_with('/') {
+            path.pop();
         }
 
-        if result == "." && uri.scheme() != "file" {
-            result = String::new();
-        }
+        let new_path = match path.rfind('/') {
+            Some(0) => "/",
+            Some(i) => &path[..i],
+            None => "",
+        };
 
         uri.with(crate::uri::URIChange {
-            path: Some(result),
+            path: Some(new_path.to_string()),
             ..Default::default()
         })
     }
@@ -147,19 +163,19 @@ impl Utils {
      */
     pub fn basename(uri: &URI) -> String {
         let path = uri.path();
-        if path.is_empty() {
+        if path.is_empty() || path == "/" {
             return String::new();
         }
 
-        let mut path_str = path.to_string();
-        if path_str.ends_with('/') && path_str != "/" {
-            path_str.pop();
+        let mut path = path.to_string();
+        // Remove trailing slashes except for root
+        while path.len() > 1 && path.ends_with('/') {
+            path.pop();
         }
 
-        if let Some(last_slash) = path_str.rfind('/') {
-            path_str[last_slash + 1..].to_string()
-        } else {
-            path_str
+        match path.rfind('/') {
+            Some(last_slash) => path[last_slash + 1..].to_string(),
+            None => path,
         }
     }
 
@@ -172,48 +188,69 @@ impl Utils {
      * @return The extension name of the URIs path.
      */
     pub fn extname(uri: &URI) -> String {
-        let base = Self::basename(uri);
-        if base.is_empty() {
+        let path = uri.path();
+        if path.is_empty() || path == "/" {
             return String::new();
         }
 
-        if let Some(dot_pos) = base.rfind('.') {
-            if dot_pos > 0 {
-                // Ensure it's not a hidden file (starting with .)
-                return base[dot_pos..].to_string();
-            }
+        let mut path = path.to_string();
+        // Remove trailing slashes except for root
+        while path.len() > 1 && path.ends_with('/') {
+            path.pop();
         }
 
-        String::new()
+        let filename = match path.rfind('/') {
+            Some(last_slash) => &path[last_slash + 1..],
+            None => &path,
+        };
+
+        match filename.rfind('.') {
+            Some(last_dot) if last_dot > 0 && last_dot < filename.len() - 1 => {
+                filename[last_dot..].to_string()
+            }
+            _ => String::new(),
+        }
     }
 
-    fn normalize_path(path: &str) -> String {
+    pub fn normalize_path(path: &str) -> String {
         if path.is_empty() {
-            return String::new();
+            return ".".to_string();
         }
 
-        let mut result = Vec::new();
+        let mut normalized = String::with_capacity(path.len());
+        let had_trailing_slash = path.ends_with('/') && path != "/";
         let segments: Vec<&str> = path.split('/').collect();
-        let starts_with_slash = path.starts_with('/');
+        let mut stack: Vec<&str> = Vec::new();
+
+        // Handle absolute paths
+        if path.starts_with('/') {
+            normalized.push('/');
+        }
 
         for segment in segments {
             match segment {
                 "" | "." => continue,
                 ".." => {
-                    if !result.is_empty() {
-                        result.pop();
+                    if !stack.is_empty() && stack.last() != Some(&"..") {
+                        stack.pop();
+                    } else if !path.starts_with('/') {
+                        // For relative paths, keep the ".." segments
+                        stack.push("..");
                     }
                 }
-                _ => result.push(segment),
+                _ => stack.push(segment),
             }
         }
 
-        let mut normalized = result.join("/");
-        if starts_with_slash {
-            normalized = format!("/{}", normalized);
+        // Join the segments
+        if !stack.is_empty() {
+            normalized.push_str(&stack.join("/"));
+        } else if !normalized.starts_with('/') {
+            normalized.push('.');
         }
 
-        if path.ends_with('/') && !normalized.ends_with('/') && !normalized.is_empty() {
+        // Restore trailing slash if it existed
+        if had_trailing_slash {
             normalized.push('/');
         }
 
