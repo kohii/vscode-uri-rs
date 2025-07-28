@@ -44,6 +44,20 @@ test_both_platforms!(test_file_to_string, || {
     Ok(())
 });
 
+test_both_platforms!(test_percent_encoding_in_file_path, || {
+    // Test case: In original vscode-uri, URI.file("/foo/bar/%20.txt") == "file:///foo/bar/%20.txt"
+    // The %20 in the path should NOT be double-encoded
+    let uri = URI::file("/foo/bar/%20.txt")?;
+    let actual = uri.to_string(false);
+    println!("Actual output: {}", actual);
+    assert_eq!(
+        actual,
+        "file:///foo/bar/%20.txt",
+        "URI.file should NOT double-encode percent signs in file paths (original vscode-uri behavior)"
+    );
+    Ok(())
+});
+
 test_both_platforms!(test_uri_file_win_special, || {
     if is_windows() {
         assert_eq!(
