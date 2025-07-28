@@ -286,8 +286,6 @@ fn uri_to_fs_path(uri: &URI, keep_drive_letter_casing: bool) -> String {
         value = uri.path.clone();
     }
 
-    value = percent_decode(&value).to_string();
-
     if is_windows() {
         value = value.replace('/', "\\");
     }
