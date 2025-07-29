@@ -49,7 +49,6 @@ lazy_static! {
         m.insert(CharCode::Comma as u32, "%2C");
         m.insert(CharCode::Semicolon as u32, "%3B");
         m.insert(CharCode::Equals as u32, "%3D");
-        m.insert(CharCode::PercentSign as u32, "%25");
 
         m.insert(CharCode::Space as u32, "%20");
         m
@@ -287,8 +286,6 @@ fn uri_to_fs_path(uri: &URI, keep_drive_letter_casing: bool) -> String {
         value = uri.path.clone();
     }
 
-    value = percent_decode(&value).to_string();
-
     if is_windows() {
         value = value.replace('/', "\\");
     }
@@ -452,13 +449,24 @@ impl URI {
         query: impl Into<String>,
         fragment: impl Into<String>,
     ) -> Result<Self, UriError> {
+        Self::new_with_strict(scheme, authority, path, query, fragment, false)
+    }
+
+    pub fn new_with_strict(
+        scheme: impl Into<String>,
+        authority: impl Into<String>,
+        path: impl Into<String>,
+        query: impl Into<String>,
+        fragment: impl Into<String>,
+        strict: bool,
+    ) -> Result<Self, UriError> {
         let scheme = scheme.into();
         let authority = authority.into();
         let path = path.into();
         let query = query.into();
         let fragment = fragment.into();
 
-        let scheme = scheme_fix(&scheme, false);
+        let scheme = scheme_fix(&scheme, strict);
         let path = reference_resolution(&scheme, &path);
 
         let uri = URI {
@@ -468,7 +476,7 @@ impl URI {
             query,
             fragment,
         };
-        validate_uri(&uri, false)?;
+        validate_uri(&uri, strict)?;
         Ok(uri)
     }
 
@@ -480,9 +488,9 @@ impl URI {
         Self::parse_with_strict(value, false)
     }
 
-    pub fn parse_with_strict(value: &str, _strict: bool) -> Result<Self, UriError> {
+    pub fn parse_with_strict(value: &str, strict: bool) -> Result<Self, UriError> {
         if value.is_empty() {
-            return URI::new(EMPTY, EMPTY, EMPTY, EMPTY, EMPTY);
+            return URI::new_with_strict(EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, strict);
         }
 
         if let Some(captures) = URI_REGEX.captures(value) {
@@ -500,10 +508,10 @@ impl URI {
                 .get(9)
                 .map_or(EMPTY.to_string(), |m| percent_decode(m.as_str()));
 
-            return URI::new(scheme, authority, path, query, fragment);
+            return URI::new_with_strict(scheme, authority, path, query, fragment, strict);
         }
 
-        URI::new(EMPTY, EMPTY, EMPTY, EMPTY, EMPTY)
+        URI::new_with_strict(EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, strict)
     }
 
     pub fn file(path: impl AsRef<Path>) -> Result<Self, UriError> {
